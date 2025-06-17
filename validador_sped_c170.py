@@ -1,44 +1,35 @@
-import pandas as pd
+import csv
 
-# Configuração dos caminhos
-txt_path = "caminho/para/seu_arquivo_sped.txt"
-xlsx_path = "caminho/para/sua_planilha.xlsx"
+# === CONFIGURAÇÃO ===
+arquivo_sped = "CAMINHO/SEU_ARQUIVO.TXT"
+arquivo_saida = "divergencias_c170.csv"
 
-# Leitura do Excel
-real_df = pd.read_excel(xlsx_path)
-real_df['CHAVEACI'] = real_df['CHAVEACI'].astype(str)
+# === PARÂMETROS ESPERADOS ===
+valor_esperado_pis = 0.64
+valor_esperado_cofins = 3.08
 
-# Leitura do TXT (linha a linha)
-registros = []
+# === PROCESSAMENTO ===
+with open(arquivo_sped, 'r', encoding='utf-8') as f_in, open(arquivo_saida, 'w', newline='', encoding='utf-8') as f_out:
+    writer = csv.DictWriter(f_out, fieldnames=["Linha", "VL_PIS", "VL_COFINS", "Registro"])
+    writer.writeheader()
 
-with open(txt_path, 'r', encoding='utf-8') as f:
-    for line in f:
+    for i, line in enumerate(f_in, start=1):
         if "|C170|" in line:
-            campos = line.strip().split('|')
-            if len(campos) >= 28:
-                try:
-                    chave = campos[-4]  # ajuste se necessário
-                    valor_pis = float(campos[24].replace(',', '.')) if campos[24] else 0.0
-                    valor_cofins = float(campos[27].replace(',', '.')) if campos[27] else 0.0
+            campos = line.strip().split("|")
 
-                    registros.append({
-                        'CHAVEACI': chave,
-                        'VALOR_PIS_SPED': round(valor_pis, 2),
-                        'VALOR_COFINS_SPED': round(valor_cofins, 2),
-                    })
-                except Exception:
-                    continue
+            try:
+                if len(campos) >= 28:
+                    vl_pis = float(campos[24].replace(',', '.')) if campos[24] else 0.0
+                    vl_cofins = float(campos[27].replace(',', '.')) if campos[27] else 0.0
 
-sped_df = pd.DataFrame(registros)
+                    if round(vl_pis, 2) != valor_esperado_pis or round(vl_cofins, 2) != valor_esperado_cofins:
+                        writer.writerow({
+                            "Linha": i,
+                            "VL_PIS": vl_pis,
+                            "VL_COFINS": vl_cofins,
+                            "Registro": line.strip()
+                        })
+            except Exception as e:
+                print(f"Erro na linha {i}: {e}")
 
-# Junção e comparação
-merged_df = pd.merge(sped_df, real_df, on="CHAVEACI", how="inner")
-merged_df["DIF_PIS"] = merged_df["VALOR_PIS_SPED"] - merged_df["VALOR_PIS"]
-merged_df["DIF_COFINS"] = merged_df["VALOR_COFINS_SPED"] - merged_df["VALOR_COFINS"]
-
-# Filtra divergências
-erros_df = merged_df[(merged_df["DIF_PIS"].abs() > 0.01) | (merged_df["DIF_COFINS"].abs() > 0.01)]
-
-# Salva resultados
-erros_df.to_csv("divergencias_pis_cofins.csv", index=False)
-print(f"Divergências salvas em 'divergencias_pis_cofins.csv' ({len(erros_df)} linhas com erro)")
+print(f"✅ Verificação concluída. Divergências salvas em: {arquivo_saida}")
