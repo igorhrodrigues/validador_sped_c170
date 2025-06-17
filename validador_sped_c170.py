@@ -1,39 +1,44 @@
-import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Validador SPED - Bloco C170", layout="wide")
+# Configuração dos caminhos
+txt_path = "caminho/para/seu_arquivo_sped.txt"
+xlsx_path = "caminho/para/sua_planilha.xlsx"
 
-st.title("🔍 Validador de SPED - Bloco C170")
-st.markdown("Este validador verifica se os valores de PIS e COFINS no bloco `C170` estão corretos (esperado: **0,64** e **3,08**).")
+# Leitura do Excel
+real_df = pd.read_excel(xlsx_path)
+real_df['CHAVEACI'] = real_df['CHAVEACI'].astype(str)
 
-uploaded_file = st.file_uploader("📤 Faça upload do arquivo .TXT do SPED:", type=["txt"])
+# Leitura do TXT (linha a linha)
+registros = []
 
-if uploaded_file:
-    lines = uploaded_file.readlines()
-    c170_erros = []
+with open(txt_path, 'r', encoding='utf-8') as f:
+    for line in f:
+        if "|C170|" in line:
+            campos = line.strip().split('|')
+            if len(campos) >= 28:
+                try:
+                    chave = campos[-4]  # ajuste se necessário
+                    valor_pis = float(campos[24].replace(',', '.')) if campos[24] else 0.0
+                    valor_cofins = float(campos[27].replace(',', '.')) if campos[27] else 0.0
 
-    for idx, line in enumerate(lines):
-        line_str = line.decode('utf-8').strip()
-        fields = line_str.split('|')
-        
-        if len(fields) > 0 and fields[1] == 'C170':
-            try:
-                vl_pis = float(fields[24].replace(',', '.')) if len(fields) > 24 and fields[24] else 0.0
-                vl_cofins = float(fields[27].replace(',', '.')) if len(fields) > 27 and fields[27] else 0.0
-
-                if round(vl_pis, 2) != 0.64 or round(vl_cofins, 2) != 3.08:
-                    c170_erros.append({
-                        "Linha": idx + 1,
-                        "Registro": line_str,
-                        "VL_PIS": vl_pis,
-                        "VL_COFINS": vl_cofins
+                    registros.append({
+                        'CHAVEACI': chave,
+                        'VALOR_PIS_SPED': round(valor_pis, 2),
+                        'VALOR_COFINS_SPED': round(valor_cofins, 2),
                     })
-            except ValueError:
-                st.warning(f"Erro ao processar linha {idx + 1}. Verifique se o arquivo está bem formatado.")
+                except Exception:
+                    continue
 
-    if c170_erros:
-        df_erros = pd.DataFrame(c170_erros)
-        st.error(f"🚨 Foram encontradas {len(df_erros)} divergências no bloco C170.")
-        st.dataframe(df_erros, use_container_width=True)
-    else:
-        st.success("✅ Nenhuma divergência encontrada nos valores de PIS e COFINS do bloco C170.")
+sped_df = pd.DataFrame(registros)
+
+# Junção e comparação
+merged_df = pd.merge(sped_df, real_df, on="CHAVEACI", how="inner")
+merged_df["DIF_PIS"] = merged_df["VALOR_PIS_SPED"] - merged_df["VALOR_PIS"]
+merged_df["DIF_COFINS"] = merged_df["VALOR_COFINS_SPED"] - merged_df["VALOR_COFINS"]
+
+# Filtra divergências
+erros_df = merged_df[(merged_df["DIF_PIS"].abs() > 0.01) | (merged_df["DIF_COFINS"].abs() > 0.01)]
+
+# Salva resultados
+erros_df.to_csv("divergencias_pis_cofins.csv", index=False)
+print(f"Divergências salvas em 'divergencias_pis_cofins.csv' ({len(erros_df)} linhas com erro)")
