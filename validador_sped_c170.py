@@ -2,14 +2,14 @@ import streamlit as st
 import pandas as pd
 import os
 
-st.set_page_config(page_title="Validador SPED - Bloco C170", layout="wide")
-st.title("📁 Validador de Arquivo SPED (.txt) Grande - Bloco C170")
+st.set_page_config(page_title="Validador SPED C170", layout="wide")
+st.title("📄 Validador de Arquivo SPED (.txt) - Bloco C170 (Mac)")
 
-# Caminho do arquivo local
-caminho = st.text_input("Digite ou cole o caminho do arquivo SPED (.txt):")
+# Input manual do caminho do arquivo
+caminho = st.text_input("📂 Caminho completo do arquivo .txt:", value="/Users/Payface/Downloads/BLOCO C CONTR.txt")
 
 if caminho and os.path.exists(caminho):
-    st.success("📄 Arquivo encontrado. Iniciando leitura...")
+    st.success("✅ Arquivo encontrado. Iniciando leitura...")
 
     registros_com_erro = []
 
@@ -29,15 +29,14 @@ if caminho and os.path.exists(caminho):
                                 "Registro": line.strip()
                             })
                 except Exception as e:
-                    st.warning(f"Erro na linha {idx}: {e}")
+                    st.warning(f"⚠️ Erro na linha {idx}: {e}")
 
     if registros_com_erro:
         df_erros = pd.DataFrame(registros_com_erro)
         st.error(f"🚨 {len(df_erros)} divergências encontradas.")
         st.dataframe(df_erros, use_container_width=True)
-        st.download_button("📥 Baixar CSV com erros", df_erros.to_csv(index=False), "divergencias_c170.csv", "text/csv")
+        st.download_button("📥 Baixar CSV com divergências", df_erros.to_csv(index=False), "divergencias_c170.csv", "text/csv")
     else:
         st.success("✅ Nenhuma divergência encontrada.")
-
 elif caminho:
-    st.error("❌ Caminho inválido ou arquivo não encontrado.")
+    st.error("❌ Caminho inválido ou o arquivo não existe.")
