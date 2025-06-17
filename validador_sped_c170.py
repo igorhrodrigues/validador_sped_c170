@@ -1,35 +1,43 @@
+import streamlit as st
+import pandas as pd
 import csv
+import tempfile
 
-# === CONFIGURAÇÃO ===
-arquivo_sped = "CAMINHO/SEU_ARQUIVO.TXT"
-arquivo_saida = "divergencias_c170.csv"
+st.set_page_config(page_title="Validador SPED C170", layout="wide")
+st.title("📄 Validador SPED - Bloco C170")
+st.markdown("Detecta divergências de PIS ≠ 0,64 ou COFINS ≠ 3,08")
 
-# === PARÂMETROS ESPERADOS ===
-valor_esperado_pis = 0.64
-valor_esperado_cofins = 3.08
+uploaded_file = st.file_uploader("📤 Faça upload do arquivo SPED (.txt)", type=["txt"])
 
-# === PROCESSAMENTO ===
-with open(arquivo_sped, 'r', encoding='utf-8') as f_in, open(arquivo_saida, 'w', newline='', encoding='utf-8') as f_out:
-    writer = csv.DictWriter(f_out, fieldnames=["Linha", "VL_PIS", "VL_COFINS", "Registro"])
-    writer.writeheader()
+if uploaded_file:
+    # Escreve temporariamente o conteúdo em disco (necessário para arquivos grandes)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="wb") as temp:
+        temp.write(uploaded_file.read())
+        temp_path = temp.name
 
-    for i, line in enumerate(f_in, start=1):
-        if "|C170|" in line:
-            campos = line.strip().split("|")
+    registros_com_erro = []
+    with open(temp_path, 'r', encoding='utf-8') as f:
+        for idx, line in enumerate(f, start=1):
+            if "|C170|" in line:
+                campos = line.strip().split("|")
+                try:
+                    if len(campos) >= 28:
+                        valor_pis = float(campos[24].replace(',', '.')) if campos[24] else 0.0
+                        valor_cofins = float(campos[27].replace(',', '.')) if campos[27] else 0.0
+                        if round(valor_pis, 2) != 0.64 or round(valor_cofins, 2) != 3.08:
+                            registros_com_erro.append({
+                                "Linha": idx,
+                                "VL_PIS": valor_pis,
+                                "VL_COFINS": valor_cofins,
+                                "Registro": line.strip()
+                            })
+                except Exception as e:
+                    st.warning(f"Erro na linha {idx}: {e}")
 
-            try:
-                if len(campos) >= 28:
-                    vl_pis = float(campos[24].replace(',', '.')) if campos[24] else 0.0
-                    vl_cofins = float(campos[27].replace(',', '.')) if campos[27] else 0.0
-
-                    if round(vl_pis, 2) != valor_esperado_pis or round(vl_cofins, 2) != valor_esperado_cofins:
-                        writer.writerow({
-                            "Linha": i,
-                            "VL_PIS": vl_pis,
-                            "VL_COFINS": vl_cofins,
-                            "Registro": line.strip()
-                        })
-            except Exception as e:
-                print(f"Erro na linha {i}: {e}")
-
-print(f"✅ Verificação concluída. Divergências salvas em: {arquivo_saida}")
+    if registros_com_erro:
+        df_erros = pd.DataFrame(registros_com_erro)
+        st.error(f"🚨 Foram encontradas {len(df_erros)} divergências.")
+        st.dataframe(df_erros, use_container_width=True)
+        st.download_button("📥 Baixar CSV com divergências", df_erros.to_csv(index=False), "divergencias_c170.csv", "text/csv")
+    else:
+        st.success("✅ Nenhuma divergência encontrada no bloco C170.")
