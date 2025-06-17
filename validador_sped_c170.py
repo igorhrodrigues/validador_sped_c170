@@ -1,57 +1,43 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox
-import csv
+import streamlit as st
+import pandas as pd
 import os
 
-def processar_arquivo():
-    caminho = filedialog.askopenfilename(
-        title="Selecione o arquivo SPED .txt",
-        filetypes=[("Arquivos TXT", "*.txt")]
-    )
+st.set_page_config(page_title="Validador SPED - Bloco C170", layout="wide")
+st.title("📁 Validador de Arquivo SPED (.txt) Grande - Bloco C170")
 
-    if not caminho:
-        return
+# Caminho do arquivo local
+caminho = st.text_input("Digite ou cole o caminho do arquivo SPED (.txt):")
 
-    saida_csv = os.path.splitext(caminho)[0] + "_divergencias.csv"
-    erros = 0
+if caminho and os.path.exists(caminho):
+    st.success("📄 Arquivo encontrado. Iniciando leitura...")
 
-    try:
-        with open(caminho, 'r', encoding='utf-8') as f_in, open(saida_csv, 'w', newline='', encoding='utf-8') as f_out:
-            writer = csv.DictWriter(f_out, fieldnames=["Linha", "VL_PIS", "VL_COFINS", "Registro"])
-            writer.writeheader()
+    registros_com_erro = []
 
-            for idx, line in enumerate(f_in, start=1):
-                if "|C170|" in line:
-                    campos = line.strip().split("|")
-                    try:
-                        if len(campos) >= 28:
-                            pis = float(campos[24].replace(",", ".")) if campos[24] else 0.0
-                            cofins = float(campos[27].replace(",", ".")) if campos[27] else 0.0
-                            if round(pis, 2) != 0.64 or round(cofins, 2) != 3.08:
-                                writer.writerow({
-                                    "Linha": idx,
-                                    "VL_PIS": pis,
-                                    "VL_COFINS": cofins,
-                                    "Registro": line.strip()
-                                })
-                                erros += 1
-                    except:
-                        continue
+    with open(caminho, 'r', encoding='utf-8') as f:
+        for idx, line in enumerate(f, start=1):
+            if "|C170|" in line:
+                campos = line.strip().split("|")
+                try:
+                    if len(campos) >= 28:
+                        valor_pis = float(campos[24].replace(',', '.')) if campos[24] else 0.0
+                        valor_cofins = float(campos[27].replace(',', '.')) if campos[27] else 0.0
+                        if round(valor_pis, 2) != 0.64 or round(valor_cofins, 2) != 3.08:
+                            registros_com_erro.append({
+                                "Linha": idx,
+                                "VL_PIS": valor_pis,
+                                "VL_COFINS": valor_cofins,
+                                "Registro": line.strip()
+                            })
+                except Exception as e:
+                    st.warning(f"Erro na linha {idx}: {e}")
 
-        messagebox.showinfo("Concluído", f"{erros} divergências salvas em:\n{saida_csv}")
-    except Exception as e:
-        messagebox.showerror("Erro", f"Ocorreu um erro:\n{e}")
+    if registros_com_erro:
+        df_erros = pd.DataFrame(registros_com_erro)
+        st.error(f"🚨 {len(df_erros)} divergências encontradas.")
+        st.dataframe(df_erros, use_container_width=True)
+        st.download_button("📥 Baixar CSV com erros", df_erros.to_csv(index=False), "divergencias_c170.csv", "text/csv")
+    else:
+        st.success("✅ Nenhuma divergência encontrada.")
 
-# Interface Gráfica
-janela = tk.Tk()
-janela.title("Validador SPED - C170")
-janela.geometry("400x150")
-janela.resizable(False, False)
-
-label = tk.Label(janela, text="Clique no botão abaixo para selecionar o arquivo SPED (.txt):", wraplength=380)
-label.pack(pady=20)
-
-btn = tk.Button(janela, text="Selecionar Arquivo", command=processar_arquivo)
-btn.pack()
-
-janela.mainloop()
+elif caminho:
+    st.error("❌ Caminho inválido ou arquivo não encontrado.")
